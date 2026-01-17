@@ -71,11 +71,38 @@ PENDING → QUEUED → DISPATCHED → RUNNING → SUCCEEDED / FAILED
 * pod.running
 * pod.succeeded / failed
 
-Control Plane은 이를 **Replicated State Machine**처럼 관리합니다다.
+Control Plane은 이를 **Replicated State Machine**처럼 관리합니다.
 
 ---
+## 4. Job 생성 단계: Control Plane 트랜잭션
 
-## 4. 스케줄러 설계 (Capacity-aware Dispatch)
+![job-create](docs/job-create-transaction.png)
+
+사용자가 `POST /api/v1/finetuning` 요청을 보내면 Control Plane은
+Kubernetes 리소스를 생성하기 전에 다음 과정을 **단일 DB 트랜잭션**으로 처리합니다.
+이는 크레딧 과다 차감 방지와 이벤트 발행의 원자성을 보장합니다.
+
+1. Dataset 상태 검증 (`status = READY`)
+2. ResourceProfile 조회 및 실행 비용 산정 (`reservedCost = costPerSecond × maxDuration`)
+3. 사용자 크레딧 예약
+
+   * `balanceAvailable` 감소
+   * `balanceReserved` 증가
+4. 크레딧 원장 기록
+
+   * `CreditTransaction(type = RESERVE)` 생성
+5. Job 엔티티 생성
+
+   * `status = PENDING`
+6. Outbox 이벤트 기록
+
+   * `eventType = job.created`
+
+이 단계에서 Job은 아직 스케줄링되지 않았으며,
+이후 Scheduler가 Redis Stream의 `job.created` 이벤트를 소비하여
+큐잉 및 디스패치 단계로 상태를 전이합니다.
+
+## 5. 스케줄러 설계 (Capacity-aware Dispatch)
 
 ![scheduler](docs/scheduler.png)
 
@@ -90,7 +117,19 @@ Redis Stream Consumer Group을 이용해 **Exactly-once Dispatch Semantics**를 
 
 ---
 
-## 5. Kubernetes Job 실행 모델
+## 6. Job Manifest 구조
+
+![job-manifest](docs/job-manifest.png)
+
+* GPU 리소스 요청
+* Non-root 실행
+* InitContainer / Main / Sidecar 분리
+* ActiveDeadlineSeconds 기반 실행 제한
+* Backoff 없는 Deterministic Failure Model
+
+---
+
+## 7. Kubernetes Job 실행 모델
 
 ![k8s-job](docs/k8s-job.png)
 
@@ -112,31 +151,6 @@ Redis Stream Consumer Group을 이용해 **Exactly-once Dispatch Semantics**를 
 * Job 종료 시점 동기화
 
 이는 단순 배치 작업이 아닌, **재현 가능한 ML 파이프라인** 구조입니다.
-
----
-
-## 6. Job Manifest 구조
-
-![job-manifest](docs/job-manifest.png)
-
-* GPU 리소스 요청
-* Non-root 실행
-* InitContainer / Main / Sidecar 분리
-* ActiveDeadlineSeconds 기반 실행 제한
-* Backoff 없는 Deterministic Failure Model
-
----
-
-## 7. 데이터 & 모델 계보 (Artifact Lineage)
-
-![storage-flow](docs/storage-flow.png)
-
-```
-Dataset → Job → ModelVersion → S3 Artifact
-```
-
-모든 모델은 어떤 Job과 어떤 Dataset에서 생성되었는지 추적 가능하며,
-모델 버전 관리 및 재현성을 보장합니다.
 
 ---
 
