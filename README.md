@@ -26,7 +26,7 @@
 * S3: Dataset 및 Model Artifact 저장소
 * ECR / CloudWatch / Secrets Manager 연동
 
-각 Job은 Kubernetes Job 단위로 격리 실행되며, 데이터는 S3–PVC–Pod 간 파이프라인으로 이동합니다다.
+각 Job은 Kubernetes Job 단위로 격리 실행되며, 데이터는 S3–PVC–Pod 간 파이프라인으로 이동합니다.
 
 ---
 
@@ -58,7 +58,7 @@ Control Plane은 **상태 머신과 트랜잭션 정합성**을 담당하고,
 
 ![job-flow](docs/job-flow.png)
 
-Job은 다음 상태 전이를 따른다.
+Job은 다음 상태 전이를 따르게 됩니다다.
 
 ```
 PENDING → QUEUED → DISPATCHED → RUNNING → SUCCEEDED / FAILED
@@ -113,7 +113,7 @@ Scheduler는 다음을 보장한다.
 3. Backpressure (큐잉)
 4. Idempotent 재처리
 
-Redis Stream Consumer Group을 이용해 **Exactly-once Dispatch Semantics**를 구현했습니다다.
+Redis Stream Consumer Group을 이용해 **Exactly-once Dispatch Semantics**를 구현했습니다.
 
 ---
 
